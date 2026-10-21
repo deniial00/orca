@@ -4,20 +4,27 @@
  * `agent.launch` gets the create's own startup terminal, which cannot take a model, effort or surface.
  */
 
-import type { AgentLaunchResult } from '../../shared/agent-launch-intent'
+import type { RuntimeWorktreeCreateResult, RuntimeWorktreeRecord } from '../../shared/runtime-types'
 import {
   AGENT_LAUNCH_LOCAL_PRESENTATION_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY
 } from '../../shared/agent-launch-runtime-capability'
-import type { RuntimeWorktreeCreateResult, RuntimeWorktreeRecord } from '../../shared/runtime-types'
 import {
   callAgentLaunch,
   formatAgentLaunch,
   hasLaunchModelFlags,
   getAgentLaunchCapabilities,
+  readCliAgentLaunch,
+  rejectDefaultAgentRetry,
+  resolveCliAgent,
   type CliAgentLaunch,
-  SURFACE_UNSUPPORTED_MESSAGE
+  type CliAgentLaunchResult,
+  type CliAgentRequest,
+  type CliLaunchedAgent,
+  SURFACE_UNSUPPORTED_MESSAGE,
+  withLaunchedAgent
 } from '../agent-launch-request'
+import type { CliRepoTarget } from '../worktree-project-target'
 import { formatWorktreeShow, printResult } from '../format'
 import { RuntimeClientError, type RuntimeClient } from '../runtime-client'
 import { printLineageSummary } from './worktree-lineage-summary'
@@ -31,7 +38,44 @@ type WorktreeAgentLaunchResult = Pick<
 > & {
   /** Absent only when the host could not show the worktree it just created. */
   worktree?: RuntimeWorktreeRecord
-  launch: AgentLaunchResult
+  launch: CliAgentLaunchResult
+}
+
+type WorktreeCreateAgentRequest = { request: CliAgentRequest; explicitLaunch?: CliAgentLaunch }
+
+/** Reads a named agent's launch before any request, so a bad prompt, model or effort creates
+ *  nothing. `default` waits for the host to name the agent; it is still read before the create. */
+export function readWorktreeCreateAgentRequest(
+  flags: Map<string, string | boolean>,
+  request: CliAgentRequest | undefined
+): WorktreeCreateAgentRequest | undefined {
+  if (!request) {
+    return undefined
+  }
+  rejectDefaultAgentRetry(flags, request)
+  return request === 'default'
+    ? { request }
+    : { request, explicitLaunch: readCliAgentLaunch(flags, request, { createsWorktree: true }) }
+}
+
+/** Resolves `--agent default` on the host the repo is set up on, before the worktree exists. */
+export async function resolveWorktreeCreateAgent(
+  client: RuntimeClient,
+  flags: Map<string, string | boolean>,
+  pending: WorktreeCreateAgentRequest | undefined,
+  repoTarget: CliRepoTarget
+): Promise<{ launch: CliAgentLaunch; launchedAgent: CliLaunchedAgent } | undefined> {
+  if (!pending) {
+    return undefined
+  }
+  const launchedAgent = await resolveCliAgent(client, pending.request, {
+    kind: 'create-worktree',
+    ...repoTarget
+  })
+  const launch =
+    pending.explicitLaunch ??
+    readCliAgentLaunch(flags, launchedAgent.agent, { createsWorktree: true })
+  return { launch, launchedAgent }
 }
 
 export async function createWorktreeWithAgent(args: {
@@ -39,10 +83,11 @@ export async function createWorktreeWithAgent(args: {
   flags: Map<string, string | boolean>
   create: Record<string, unknown>
   launch: CliAgentLaunch
+  launchedAgent: CliLaunchedAgent
   json: boolean
   rawArgs?: readonly string[]
 }): Promise<void> {
-  const { client, flags, create, launch, json, rawArgs } = args
+  const { client, flags, create, launch, launchedAgent, json, rawArgs } = args
   const capabilities = await getAgentLaunchCapabilities(client)
   if (
     !capabilities?.includes(AGENT_LAUNCH_LOCAL_PRESENTATION_RUNTIME_CAPABILITY) ||
@@ -105,7 +150,7 @@ export async function createWorktreeWithAgent(args: {
           workspaceLineage: worktree.workspaceLineage ?? null
         }
       : { lineage: null }),
-    launch: launched.result
+    launch: withLaunchedAgent(launched.result, launchedAgent)
   }
   printLineageSummary(result, json)
   printResult({ ...launched, result }, json, (value) =>
