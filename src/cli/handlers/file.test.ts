@@ -56,13 +56,13 @@ describe('orca file CLI handlers', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
-  it('prints group help with file commands', async () => {
+  it('prints file group help without contacting the runtime', async () => {
     await main(['file', '--help'], '/tmp/repo')
 
     const output = vi.mocked(console.log).mock.calls[0][0]
-    expect(output).toContain('open')
-    expect(output).toContain('diff')
+    expect(output).toContain('Usage: orca file <command> [options]')
     expect(output).toContain('open-changed')
+    expect(callMock).not.toHaveBeenCalled()
   })
 
   it('opens a positional path in the inferred current worktree', async () => {

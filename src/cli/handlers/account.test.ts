@@ -314,7 +314,10 @@ describe('account CLI handlers', () => {
     expect(pathValues).toContain(`${nodeBin}${delimiter}${effectivePathBefore}`)
   })
 
-  it('runs login in the final profile and never reads, writes or cleans up Keychain credentials', async () => {
+  it('runs login in the final profile without accessing a locked Keychain', async () => {
+    readKeychainMock.mockRejectedValue(new Error('locked'))
+    deleteKeychainMock.mockRejectedValue(new Error('locked'))
+    writeKeychainMock.mockRejectedValue(new Error('locked'))
     await ACCOUNT_HANDLERS['account add'](context('claude'))
     expect(spawnMock.mock.calls[0]?.[2].env.CLAUDE_CONFIG_DIR).toBe('/fake/final-profile')
     expect(callMock).toHaveBeenCalledWith(
@@ -471,7 +474,11 @@ describe('account CLI handlers', () => {
       queueMicrotask(() => child.emit('exit', 0))
       return child
     })
-    // Why: only the registration RPC hangs — the preflight must still resolve.
+    let rejectRegistration: ((error: Error) => void) | undefined
+    const registration = new Promise<never>((_resolve, reject) => {
+      rejectRegistration = reject
+    })
+    // Only registration waits; preflight must still resolve.
     callMock.mockImplementation((method: string) =>
       method === 'status.get'
         ? Promise.resolve({
@@ -489,23 +496,31 @@ describe('account CLI handlers', () => {
               result: { claude: accountState('c@e.com'), codex: accountState('x@e.com') },
               _meta: { runtimeId: 'test-runtime' }
             })
-          : new Promise(() => {})
+          : registration
     )
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
     const listenersBefore = process.listeners('SIGINT')
 
-    void ACCOUNT_HANDLERS['account add'](context('codex')).catch(() => {})
-    await vi.waitFor(() =>
-      expect(callMock).toHaveBeenCalledWith('accounts.addCodexFromHome', expect.anything())
-    )
+    const pending = ACCOUNT_HANDLERS['account add'](context('codex')).catch(() => {})
+    try {
+      await vi.waitFor(() =>
+        expect(callMock).toHaveBeenCalledWith('accounts.addCodexFromHome', expect.anything())
+      )
 
-    newSignalListener('SIGINT', listenersBefore)('SIGINT')
+      newSignalListener('SIGINT', listenersBefore)('SIGINT')
 
-    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130))
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('may still have been registered'))
-    warnSpy.mockRestore()
-    exitSpy.mockRestore()
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130))
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('may still have been registered')
+      )
+    } finally {
+      rejectRegistration?.(new Error('finish interrupted registration'))
+      await pending
+      warnSpy.mockRestore()
+      exitSpy.mockRestore()
+    }
+    expect(process.listeners('SIGINT')).toEqual(listenersBefore)
   })
 
   it('fails before the login when the runtime is unreachable', async () => {
@@ -519,19 +534,19 @@ describe('account CLI handlers', () => {
     expect(spawnMock).not.toHaveBeenCalled()
   })
 
-  it('still adds Codex through an older host that advertises only the retired import capability', async () => {
-    callMock.mockResolvedValue({
+  it('adds Codex through an older host that advertises only the retired import capability', async () => {
+    callMock.mockResolvedValueOnce({
       id: 'test',
       ok: true,
       result: { capabilities: [ACCOUNT_IMPORT_RUNTIME_CAPABILITY] },
       _meta: { runtimeId: 'test-runtime' }
     })
-    spawnMock.mockImplementation(() => {
-      throw new Error('stop after the capability gate')
-    })
 
-    await expect(ACCOUNT_HANDLERS['account add'](context('codex'))).rejects.toThrow()
-    expect(spawnMock).toHaveBeenCalled()
+    await ACCOUNT_HANDLERS['account add'](context('codex'))
+
+    const sourceHome = spawnMock.mock.calls[0]?.[2].env.CODEX_HOME
+    expect(callMock).toHaveBeenCalledWith('accounts.addCodexFromHome', { sourceHome })
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('codex@example.com'))
   })
 
   it.each(['claude', 'codex'] as const)(
@@ -630,16 +645,6 @@ describe('account CLI handlers', () => {
 
     await expect(ACCOUNT_HANDLERS['account add'](context('codex', true))).rejects.toThrow('EBUSY')
     expect(logSpy).not.toHaveBeenCalled()
-  })
-
-  it('does not touch a locked Keychain while the CLI signs in', async () => {
-    readKeychainMock.mockRejectedValue(new Error('locked'))
-    deleteKeychainMock.mockRejectedValue(new Error('locked'))
-    writeKeychainMock.mockRejectedValue(new Error('locked'))
-    await ACCOUNT_HANDLERS['account add'](context('claude'))
-    expect(readKeychainMock).not.toHaveBeenCalled()
-    expect(deleteKeychainMock).not.toHaveBeenCalled()
-    expect(writeKeychainMock).not.toHaveBeenCalled()
   })
 
   it('rejects `--agent` with no value instead of defaulting to Claude', async () => {

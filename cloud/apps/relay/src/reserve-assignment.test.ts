@@ -54,6 +54,7 @@ function setup(
     mode?: 'off' | 'dry-run' | 'on'
     startedAt?: number
     log?: (line: string) => void
+    demote?: (cellId: string) => string | null
   } = {}
 ) {
   const now = { value: 100_000 }
@@ -72,7 +73,7 @@ function setup(
     }),
     demote: vi.fn(async (target: { cellId: string }, request: { epoch: number; joinedAt: number }) => {
       demoted.push({ cellId: target.cellId, epoch: request.epoch, joinedAt: request.joinedAt })
-      return true
+      return options.demote ? options.demote(target.cellId) : 'demoted'
     })
   } satisfies Pick<CellReserveClient, 'reserve' | 'demote'>
   // Each director's estimate starts empty; a second of refill gives it its share.
@@ -184,18 +185,27 @@ describe('reserve assignment on a director', () => {
   })
 
   it('after the reconcile demotes a seat behind its row, mints above the row and never answers that seat', async () => {
-    const { assignment, directory, reserved, now } = setup({ feeds: [feed('c1', { full: [seated(7)] }), feed('c2')] })
+    const { assignment, directory, reserved, now } = setup({
+      feeds: [feed('c1', { full: [seated(7)] }), feed('c2')]
+    })
     // The row names another cell at epoch 8; the mirror would refuse a re-assign at 8.
     assignment.raiseEpochFloor(HOST, 8)
     const plan = await assignment.plan(HOST, { reconnect: true, region: US })
-    expect(plan).toMatchObject({ kind: 'answer', lane: 'placement', assignment: { assignmentEpoch: 9 } })
+    expect(plan).toMatchObject({
+      kind: 'answer',
+      lane: 'placement',
+      assignment: { assignmentEpoch: 9 }
+    })
+    expect(reserved.length).toBeGreaterThan(0)
     expect(reserved.every((call) => !call.sticky && call.epoch === 9)).toBe(true)
     // The floor lapses, so a host it no longer protects answers from memory again.
     now.value += RESERVE_ROW_FLOOR_TTL_MS + 1
     for (const response of [feed('c1', { seq: 2, full: [seated(7)] }), feed('c2', { seq: 2 })]) {
       directory.apply(response.cellId, response, now.value, now.value)
     }
-    expect(await assignment.plan(HOST, { reconnect: true, region: US })).toMatchObject({ lane: 'sticky' })
+    expect(await assignment.plan(HOST, { reconnect: true, region: US })).toMatchObject({
+      lane: 'sticky'
+    })
   })
 
   it('never sends a drained or demoted host back, and books it elsewhere above every known epoch', async () => {
@@ -214,7 +224,12 @@ describe('reserve assignment on a director', () => {
       now.value
     )
     const plan = await assignment.plan(HOST, { reconnect: true, region: US })
-    expect(plan).toMatchObject({ kind: 'answer', lane: 'placement', assignment: { assignmentEpoch: 8 } })
+    expect(plan).toMatchObject({
+      kind: 'answer',
+      lane: 'placement',
+      assignment: { assignmentEpoch: 8 }
+    })
+    expect(reserved.length).toBeGreaterThan(0)
     expect(reserved.every((call) => !call.sticky && call.epoch === 8)).toBe(true)
   })
 
@@ -260,11 +275,13 @@ describe('reserve assignment on a director', () => {
       kind: 'retry',
       reason: 'database'
     })
-    const known = setup({ row: async () => ({ cellId: 'c1', assignmentEpoch: 11 }) })
+    const read = vi.fn(async () => ({ cellId: 'c1', assignmentEpoch: 11 }))
+    const known = setup({ row: read })
     expect(await known.assignment.plan(HOST, { reconnect: false, region: US })).toMatchObject({
       kind: 'answer',
       assignment: { assignmentEpoch: 12 }
     })
+    expect(read).toHaveBeenCalledExactlyOnceWith(HOST)
   })
 
   it('after a WRONG_CELL leave, any director reads the row and mints above it', async () => {
@@ -333,7 +350,10 @@ describe('reserve assignment on a director', () => {
         feeds: [
           reserveCell,
           // Database room far above the reserve cell's, so the 0.25 draw loses.
-          feed('c2', { admitMode: 'db', counts: { seats: 0, controls: 0, bookings: 0, units: 0, ceiling: 5_000 } }),
+          feed('c2', {
+            admitMode: 'db',
+            counts: { seats: 0, controls: 0, bookings: 0, units: 0, ceiling: 5_000 }
+          }),
           feed('c3')
         ]
       })
@@ -411,9 +431,10 @@ describe('reserve assignment on a director', () => {
 
   it('paces with Retry-After when every reserve cell is out of budget and no database cell exists', async () => {
     const { assignment } = setup({ reserve: () => ({ outcome: 'intake' }) })
-    await expect(assignment.plan(HOST, { reconnect: false, region: US })).rejects.toBeInstanceOf(
-      ReservePaceError
-    )
+    await expect(assignment.plan(HOST, { reconnect: false, region: US })).rejects.toMatchObject({
+      message: 'reserve_cells_paced',
+      retryAfterSeconds: expect.any(Number)
+    })
   })
 
   it('tells the old reserve seat to go when it books the host elsewhere, naming that seat exactly', async () => {
@@ -449,7 +470,7 @@ describe('reserve assignment on a director', () => {
     expect(demoted).toEqual([{ cellId: 'c1', epoch: 5, joinedAt: 1_000 }])
   })
 
-  it('answers a reconnect only at the newest epoch, newest join first', async () => {
+  it('answers a reconnect at the newest epoch even when an older epoch joined later', async () => {
     const { assignment, reserved } = setup({
       feeds: [feed('c1', { full: [seated(6, 1_000)] }), feed('c2', { full: [seated(5, 3_000)] })]
     })
@@ -502,5 +523,54 @@ describe('reserve assignment on a director', () => {
       { outcomes: { full: 2 }, cells: { c1: { outcomes: { full: 2 }, fullWithRoom: 2, minFullFreeShare: 0.5 } } },
       { outcomes: { ok: 2 }, cells: { c1: { outcomes: { ok: 2 }, fullWithRoom: 0, minFullFreeShare: null } } }
     ])
+  })
+
+  describe('when a cell answers a demotion', () => {
+    const outcomes = (lines: string[]) =>
+      lines
+        .map((line) => JSON.parse(line))
+        .filter((entry) => entry.event === 'orca_relay_reserve_demote_outcome')
+
+    // The map follows the cell's feed: a refusing cell repairs that feed itself.
+    it('logs the answer by host digest and leaves the seat to the feed', async () => {
+      const lines: string[] = []
+      const logged = Promise.withResolvers<void>()
+      const { assignment, directory } = setup({
+        feeds: [feed('c1', { full: [seated(10, 1_000)] }), feed('c2')],
+        demote: () => 'not-seated',
+        log: (line) => {
+          lines.push(line)
+          if (JSON.parse(line).event === 'orca_relay_reserve_demote_outcome') {
+            logged.resolve()
+          }
+        }
+      })
+      assignment.demoteSeat({ ...HOST, cellId: 'c1', epoch: 10, joinedAt: 1_000 }, 'reconcile')
+      await logged.promise
+      expect(outcomes(lines)).toMatchObject([
+        { via: 'reconcile', cellId: 'c1', epoch: 10, outcome: 'not-seated' }
+      ])
+      expect(outcomes(lines)[0].relayHostIdDigest).toMatch(/^[0-9a-f]{12}$/)
+      expect(lines.join('\n')).not.toContain(HOST.relayHostId)
+      expect(directory.seatsOnCell('c1')).toHaveLength(1)
+    })
+
+    it('records a cell it could not reach as unreachable', async () => {
+      const lines: string[] = []
+      const logged = Promise.withResolvers<void>()
+      const { assignment } = setup({
+        feeds: [feed('c1', { full: [seated(10, 1_000)] }), feed('c2')],
+        demote: () => null,
+        log: (line) => {
+          lines.push(line)
+          if (JSON.parse(line).event === 'orca_relay_reserve_demote_outcome') {
+            logged.resolve()
+          }
+        }
+      })
+      assignment.demoteSeat({ ...HOST, cellId: 'c1', epoch: 10, joinedAt: 1_000 }, 'reconcile')
+      await logged.promise
+      expect(outcomes(lines)).toMatchObject([{ outcome: 'unreachable' }])
+    })
   })
 })

@@ -37,6 +37,7 @@ const originalPaneKey = process.env.ORCA_PANE_KEY
 // Why: a structured-session marker inherited from the runner diverts these cases to the
 // structured refusal, so which branch they exercise would depend on who ran them.
 const originalStructuredSession = process.env.ORCA_STRUCTURED_SESSION
+const originalCodexThreadId = process.env.CODEX_THREAD_ID
 
 const restoreEnv = (name: string, value: string | undefined): void => {
   if (value === undefined) {
@@ -58,6 +59,7 @@ describe('orchestration gate commands carry caller identity', () => {
     delete process.env.ORCA_TERMINAL_HANDLE
     delete process.env.ORCA_PANE_KEY
     delete process.env.ORCA_STRUCTURED_SESSION
+    delete process.env.CODEX_THREAD_ID
     process.exitCode = 0
   })
 
@@ -67,6 +69,7 @@ describe('orchestration gate commands carry caller identity', () => {
     restoreEnv('ORCA_TERMINAL_HANDLE', originalTerminalHandle)
     restoreEnv('ORCA_PANE_KEY', originalPaneKey)
     restoreEnv('ORCA_STRUCTURED_SESSION', originalStructuredSession)
+    restoreEnv('CODEX_THREAD_ID', originalCodexThreadId)
     process.exitCode = 0
   })
 

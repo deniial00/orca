@@ -9,7 +9,7 @@ on:
         type: string
 
       runner:
-        description: Hosted runner for the unit shards; relay integration keeps its x86 host.
+        description: Hosted runner for the unit shards.
         required: false
         default: ubuntu-latest
         type: string
@@ -175,7 +175,7 @@ jobs:
           export ORCA_SHARD_SOURCE_SHA
           node config/scripts/run-vitest.mjs run --config config/vitest.config.ts \
             --shard=${{ matrix.shard.index }}/${{ matrix.shard.count }} \
-            ${{ (runner.arch == 'ARM64' || inputs.runner == 'blacksmith-4vcpu-ubuntu-2404') && '--maxWorkers=4' || '' }}
+            ${{ inputs.runner == 'blacksmith-8vcpu-ubuntu-2404' && '--maxWorkers=8' || (runner.arch == 'ARM64' || inputs.runner == 'blacksmith-4vcpu-ubuntu-2404') && '--maxWorkers=4' || '' }}
 
       - name: Seal unit module cache
         id: module-cache-seal
@@ -213,7 +213,7 @@ jobs:
       fail-fast: false
       matrix:
         node: ${{ fromJSON(inputs.node_versions) }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 60
 
     steps:

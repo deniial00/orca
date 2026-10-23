@@ -246,9 +246,9 @@ describe('orca computer action CLI validation', () => {
     )
 
     expect(callMock).not.toHaveBeenCalled()
-    const output = JSON.parse(vi.mocked(console.log).mock.calls[0][0]) as {
+    const output: {
       error: { code: string; message: string; data?: { nextSteps?: string[] } }
-    }
+    } = JSON.parse(vi.mocked(console.log).mock.calls[0][0])
     expect(output.error.code).toBe('invalid_argument')
     expect(output.error.message).toContain('Invalid positive integer for --click-count')
     expect(output.error.data?.nextSteps).toEqual([

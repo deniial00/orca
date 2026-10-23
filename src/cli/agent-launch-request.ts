@@ -1,8 +1,4 @@
-/**
- * How the CLI starts an agent: through `agent.launch`, the host's one launch point that the desktop
- * and phone use too. `--surface chat|terminal` picks a chat or a terminal for this launch; without
- * it the user's Chat UI setting does. Either way the receipt says which ran and why.
- */
+// agent.launch shares desktop/mobile policy; absent --surface uses the host's Chat UI setting.
 
 import { randomUUID } from 'node:crypto'
 import type { AgentLaunchPrompt, AgentLaunchResult } from '../shared/agent-launch-intent'
@@ -37,7 +33,7 @@ import { withCliAgentLaunchRecovery } from './agent-launch-recovery'
 
 type Flags = Map<string, string | boolean>
 
-/** `create` is the `worktree.create` request the CLI already builds; the host strips agent fields. */
+/** The host strips agent fields from the worktree.create payload. */
 export type CliAgentLaunchTarget =
   | { kind: 'existing'; worktree: string }
   | { kind: 'create-worktree'; create: Record<string, unknown> }
@@ -144,8 +140,6 @@ export async function resolveCliAgent(
   }
 }
 
-/** The agent, prompt, model and effort a CLI start asks for; refuses a model or effort the launch
- *  could not apply, by the same rule as `orchestration worker-start`. */
 export function readCliAgentLaunch(
   flags: Flags,
   agent: TuiAgent,
@@ -175,7 +169,6 @@ export function readCliAgentLaunch(
     agent,
     ...(surface ? { surface } : {}),
     ...(operationId ? { operationId } : {}),
-    // A blank prompt is no prompt: the agent starts with nothing sent.
     ...(typeof prompt === 'string' && prompt.trim()
       ? { prompt: { text: prompt, delivery: 'submit' as const } }
       : {}),

@@ -163,6 +163,12 @@ it('retains four workers on ARM and the four-core Blacksmith unit runner', () =>
     )
   }
   expect(
+    runInNewContext(expression, {
+      runner: { arch: 'X64' },
+      inputs: { runner: 'blacksmith-8vcpu-ubuntu-2404' }
+    })
+  ).toBe('--maxWorkers=8')
+  expect(
     runInNewContext(expression, { runner: { arch: 'X64' }, inputs: { runner: 'ubuntu-latest' } })
   ).toBe('')
 })
@@ -174,7 +180,7 @@ it('runs full same-source controls serially with five four-worker shards and inc
   expect(warm.needs).toBe('producer')
   for (const job of [baseline, producer, warm]) {
     expect(job.uses).toBe('./.github/workflows/unit-tests.yml')
-    expect(job.with.node_versions).toBe('["24.21.0"]')
+    expect(job.with.node_versions).toBe('["24.22.1"]')
     expect(job.with.runner).toBe('ubuntu-24.04-arm')
     expect(JSON.parse(job.with.shards)).toEqual(
       Array.from({ length: 5 }, (_, index) => ({ index: index + 1, count: 5 }))

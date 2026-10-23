@@ -69,6 +69,7 @@ desktop.ini
 .oxlintcache
 /.cache/vite/
 /.cache/vite.lock/
+/.cache/typecheck/
 
 # Logs
 *.log
@@ -107,6 +108,8 @@ docs/**
 !docs/audits/
 !docs/audits/closed-editor-model-lifetime/
 !docs/audits/closed-editor-model-lifetime/**
+!docs/audits/module-organization/
+!docs/audits/module-organization/**
 !docs/assets/
 !docs/assets/**
 !docs/audits/
