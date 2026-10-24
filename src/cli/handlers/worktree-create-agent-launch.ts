@@ -1,8 +1,4 @@
-/**
- * `worktree create --agent`: the worktree and its agent in one `agent.launch`, so the agent follows
- * `--surface`, else the user's Chat UI setting, like every other launch. A host older than
- * `agent.launch` gets the create's own startup terminal, which cannot take a model, effort or surface.
- */
+// Use agent.launch for surface/model/effort; older hosts fall back to the create startup terminal.
 
 import type { RuntimeWorktreeCreateResult, RuntimeWorktreeRecord } from '../../shared/runtime-types'
 import {
@@ -14,6 +10,7 @@ import {
   formatAgentLaunch,
   hasLaunchModelFlags,
   getAgentLaunchCapabilities,
+  parseCliAgent,
   readCliAgentLaunch,
   rejectDefaultAgentRetry,
   resolveCliAgent,
@@ -43,15 +40,23 @@ type WorktreeAgentLaunchResult = Pick<
 
 type WorktreeCreateAgentRequest = { request: CliAgentRequest; explicitLaunch?: CliAgentLaunch }
 
-/** Reads a named agent's launch before any request, so a bad prompt, model or effort creates
- *  nothing. `default` waits for the host to name the agent; it is still read before the create. */
+/** Reads `--agent` and the launch it implies before any request, so a missing or bad agent, prompt,
+ *  model or effort creates nothing. `default` waits for the host to name the agent; it is still
+ *  read before the create. Flags that need an agent are refused here too. */
 export function readWorktreeCreateAgentRequest(
   flags: Map<string, string | boolean>,
-  request: CliAgentRequest | undefined
+  agent: string | undefined
 ): WorktreeCreateAgentRequest | undefined {
-  if (!request) {
+  if (agent === undefined) {
+    const needsAgent = ['prompt', 'model', 'effort', 'surface', 'retry-launch'].find((name) =>
+      flags.has(name)
+    )
+    if (needsAgent) {
+      throw new RuntimeClientError('invalid_argument', `--${needsAgent} requires --agent`)
+    }
     return undefined
   }
+  const request = parseCliAgent(agent)
   rejectDefaultAgentRetry(flags, request)
   return request === 'default'
     ? { request }
