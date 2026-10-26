@@ -101,4 +101,27 @@ describe('agent.resolveDefault', () => {
     expect(detectMock).toHaveBeenCalledWith(WSL_CONTEXT)
     expect(response).toMatchObject({ ok: true, result: { agent: 'codex', selection: 'automatic' } })
   })
+
+  it('refuses a repo set up on an SSH target before a worktree could be created', async () => {
+    resolveWorkspaceHostMock.mockReturnValueOnce({ kind: 'ssh', connectionId: 'ssh-1' })
+    const dispatcher = dispatcherFor({
+      getClientSettings: () => ({ defaultTuiAgent: 'omp', disabledTuiAgents: [] }),
+      showRepo: async () => ({ id: 'repo-1', path: '/srv/repo', executionHostId: 'ssh:box' }),
+      requireStore: () => ({})
+    })
+
+    const response = await resolveDefault(dispatcher, {
+      kind: 'create-worktree',
+      repo: 'id:repo-1'
+    })
+
+    expect(detectMock).not.toHaveBeenCalled()
+    expect(response).toMatchObject({
+      ok: false,
+      error: {
+        code: 'invalid_argument',
+        message: expect.stringContaining('SSH-hosted workspace. Name an agent with --agent <id>')
+      }
+    })
+  })
 })
