@@ -1,11 +1,12 @@
 import type { z } from 'zod'
-import { defineMethod } from '../core'
+import { defineMethod, InvalidArgumentError } from '../core'
 import { AgentResolveDefault } from '../../../../shared/rpc-contract/agent-resolve-default-params'
 import {
   resolveDefaultLaunchAgent,
   type DefaultLaunchAgentResolution
 } from '../../../../shared/default-launch-agent'
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
+import { SshHostNotServedError } from '../../../providers/ssh-host-not-served-error'
 import {
   detectAgentsOnHost,
   resolveWorkspaceAgentDetectionHost,
@@ -39,7 +40,19 @@ export const AGENT_RESOLVE_DEFAULT_METHODS = [
     params: AgentResolveDefault,
     handler: async (params, { runtime }): Promise<DefaultLaunchAgentResolution> => {
       const host = await detectionHostFor(params.target, runtime)
-      return resolveDefaultLaunchAgent(runtime.getClientSettings(), () => detectAgentsOnHost(host))
+      try {
+        return await resolveDefaultLaunchAgent(runtime.getClientSettings(), () =>
+          detectAgentsOnHost(host)
+        )
+      } catch (error) {
+        // Why not `none_available`: this host cannot be probed, which is not "no agent installed".
+        if (error instanceof SshHostNotServedError) {
+          throw new InvalidArgumentError(
+            '--agent default cannot check which agents are installed on an SSH-hosted workspace. Name an agent with --agent <id>.'
+          )
+        }
+        throw error
+      }
     }
   })
 ]

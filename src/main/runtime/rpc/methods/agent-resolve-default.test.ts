@@ -54,6 +54,25 @@ describe('agent.resolveDefault', () => {
     expect(response).toMatchObject({ ok: true, result: { agent: 'omp', selection: 'configured' } })
   })
 
+  it('refuses an SSH-hosted workspace as unprobeable, never as "no agent installed"', async () => {
+    const dispatcher = dispatcherFor({
+      getClientSettings: () => ({ defaultTuiAgent: null, disabledTuiAgents: [] }),
+      showTerminalWorkspaceLaunchScope: async () => ({ id: 'repo-1::/srv/w', path: '/srv/w' }),
+      resolveAgentDetectionHost: async () => ({ kind: 'ssh', connectionId: 'ssh-1' })
+    })
+
+    const response = await resolveDefault(dispatcher, { kind: 'existing', worktree: 'path:/srv/w' })
+
+    expect(detectMock).not.toHaveBeenCalled()
+    expect(response).toMatchObject({
+      ok: false,
+      error: {
+        code: 'invalid_argument',
+        message: expect.stringContaining('SSH-hosted workspace. Name an agent with --agent <id>')
+      }
+    })
+  })
+
   it('detects agents where the new worktree’s repo is set up, keeping the chosen host', async () => {
     detectMock.mockResolvedValueOnce(['codex'])
     resolveWorkspaceHostMock.mockReturnValueOnce({ kind: 'local', context: WSL_CONTEXT })

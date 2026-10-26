@@ -116,7 +116,7 @@ orca worktree create --name quick-check --agent codex --prompt "Summarize the di
 orca worktree create --name hidden-setup --setup inherit --json
 ```
 
-`--agent <id>` launches the selected agent in the first terminal. `--agent default` launches your configured default agent, resolved on the execution host; if it is disabled or not installed there, Orca picks another enabled installed agent the way the app does. A plain-terminal default or no available agent is refused before the worktree is created. Without `--agent`, `worktree create` starts no agent. The JSON receipt names the agent that started in `result.launch.receipt.agent`. `--prompt` sends initial work to that agent. `--setup run|skip|inherit` controls repo setup hooks; `inherit` follows the repo policy.
+`--agent <id>` launches the selected agent in the first terminal. `--agent default` launches your configured default agent, resolved on the execution host; if it is disabled or not installed there, Orca picks another enabled installed agent the way the app does. A plain-terminal default, no available agent, or a repo on an SSH target (whose agents Orca cannot check) is refused before the worktree is created. Without `--agent`, `worktree create` starts no agent. The JSON receipt names the agent that started in `result.launch.receipt.agent`. `--prompt` sends initial work to that agent. `--setup run|skip|inherit` controls repo setup hooks; `inherit` follows the repo policy.
 
 Link issues and reviews using the existing workspace metadata:
 
