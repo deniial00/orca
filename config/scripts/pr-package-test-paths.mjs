@@ -17,8 +17,7 @@ export const LINUX_PACKAGE_TESTS = [
   'src/main/browser/browser-popup-background-compatibility.electron.test.ts'
 ]
 
-// Why: cloud/ is neither linted nor format-checked, so without this a cloud-only diff skips the
-// static job's check-test-file-runners.mjs; any code file may register tests, so all of them route.
+// Cloud-only code must run check-test-file-runners: cloud is neither linted nor format-checked, and any source can register tests.
 const CLOUD_TEST_RUNNER_INPUT = /^cloud\/(?:.+\.[cm]?[jt]sx?|(?:.+\/)?package\.json)$/
 
 export function isCloudTestRunnerInput(file) {
@@ -38,6 +37,7 @@ export const WINDOWS_BOUNDARY_TESTS = [
   'config/scripts/verify-packaged-windows-agent-hook.test.mjs',
   'config/scripts/script-module-dependencies.test.mjs',
   'src/main/windows-registry-addon.test.ts',
+  'src/main/daemon/daemon-host-process-package.test.ts',
   'src/shared/windows-security-addon.win32.test.ts',
   'config/scripts/windows-process-tree-gyp-path.test.mjs',
   'config/scripts/windows-process-tree-gyp-rebuild.test.mjs',
@@ -56,6 +56,7 @@ export const WINDOWS_BOUNDARY_TESTS = [
   'src/shared/__tests__/process-host/windows-cmd-shim-resolution.win32.test.ts',
   'src/shared/__tests__/process-host/windows-tree-kill-late-taskkill.win32.test.ts',
   'src/shared/omp-fresh-launch-cmd.win32.test.ts',
+  'src/shared/windows-batch-spawn.win32.test.ts',
   'src/main/agent-hooks/windows-hook-payload-delivery.test.ts',
   'src/main/agent-hooks/managed-hook-stdin-lifecycle.test.ts',
   'src/main/jcode/hook-gate-script.test.ts',
@@ -78,6 +79,8 @@ export const WINDOWS_BOUNDARY_TESTS = [
   'src/main/windows/windows-administrator-status.win32.test.ts',
   'src/main/windows/windows-administrator-restart.win32.test.ts',
   'src/main/daemon/daemon-pid-identity-native.win32.test.ts',
+  'src/main/daemon/node-pty-conout-worker-errors.test.ts',
+  'src/main/daemon/node-pty-windows-output-error.win32.test.ts',
   'src/main/persistence/profile-state/profile-state-access-windows-native.win32.test.ts',
   'src/main/windows-live-tree-kill.win32.test.ts',
   'src/main/wsl/wsl-runner.test.ts',
@@ -97,14 +100,16 @@ export const WINDOWS_BOUNDARY_TESTS = [
   'src/shared/secure-file-fsync-flags.test.ts',
   'src/shared/secure-path-windows-acl.win32.test.ts',
   'src/main/runtime/unreadable-secret-store-preservation.win32.test.ts',
-  'src/main/ipc/pty-codex-account-attribution.test.ts',
-  'src/main/ipc/pty-spawn-env-codex-resume-provenance.test.ts',
+  'src/main/ipc/pty/pty-codex-account-attribution.test.ts',
+  'src/main/ipc/pty/pty-spawn-env-codex-resume-provenance.test.ts',
   'src/main/ipc/preflight-provider-command-selection.test.ts',
   'src/main/ipc/preflight-runnable-local-cli.test.ts',
   'src/main/managed-server/install/remote-node-runtime-store-windows.test.ts',
   'src/main/skills/skill-windows-rename-contention.integration.test.ts',
   'src/main/skills/bundled-skill-install/local-host.test.ts',
-  'src/main/skills/bundled-skill-install/plan-selection.test.ts'
+  'src/main/skills/bundled-skill-install/plan-selection.test.ts',
+  'src/main/ipc/filesystem/filesystem-read-dir-unc-drive.test.ts',
+  'src/main/ipc/filesystem/filesystem-file-content-unc-drive.test.ts'
 ]
 
 const WINDOWS_PROCESS_PROBE_PREFIXES = [

@@ -18,6 +18,7 @@ import { RuntimeClientError } from '../runtime-client'
 import {
   getOptionalPositiveIntegerFlag,
   getOptionalStringFlag,
+  getPresentStringFlag,
   getRequiredStringFlag
 } from '../flags'
 import {
@@ -55,21 +56,6 @@ import {
   getCreateReferenceInputs,
   resolveReferenceInputs
 } from '../reference-input'
-
-function getPresentStringFlag(
-  flags: Map<string, string | boolean>,
-  name: string,
-  options: { allowEmpty?: boolean } = {}
-): string | undefined {
-  if (!flags.has(name)) {
-    return undefined
-  }
-  const value = flags.get(name)
-  if (typeof value === 'string' && (options.allowEmpty || value.length > 0)) {
-    return value
-  }
-  throw new RuntimeClientError('invalid_argument', `Missing value for --${name}`)
-}
 
 function getOptionalSetupDecision(
   flags: Map<string, string | boolean>

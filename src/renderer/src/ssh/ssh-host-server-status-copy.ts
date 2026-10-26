@@ -1,4 +1,4 @@
-/** User-facing words for whether an SSH host's managed server serves it; all go through the catalog. */
+// Translate managed SSH server status through the catalog.
 import type {
   SshConnectionState,
   SshManagedServerLinkedProject,
@@ -6,11 +6,13 @@ import type {
 } from '../../../shared/ssh-types'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
+import { extractIpcErrorMessage } from '@/lib/ipc-error'
 import { launchSessionEndedLine } from './ssh-host-launch-session-copy'
 import { bridgedTerminalsLine } from './ssh-host-bridged-terminals-copy'
 import { managedUpdateLine, withDetail } from './ssh-host-server-update-copy'
 import { blockedNodeDownload, nodeDownloadBlockedText } from './ssh-host-node-download-copy'
 import { settingUpLabel, sshHostServerReassurance } from './ssh-host-server-setup-copy'
+import { hostFixableUnavailableText } from './ssh-host-fixable-unavailable-copy'
 
 export type SshHostServerStatusLine = {
   text: string
@@ -75,13 +77,12 @@ export function sshHostServerStatusLine(
   return null
 }
 
-/** A failed connect's toast: an unserved host's translated reason, else main's message. */
 export function sshConnectFailureText(
   state: Pick<SshConnectionState, 'managedServer'> | undefined,
   fallback: string
 ): string {
   const status = state?.managedServer
-  // Why uncapped: the pane and toast have no "Details", and a refusal's way out comes last.
+  // Uncapped because panes/toasts lack Details and refusal recovery guidance comes last.
   return status?.kind === 'relay' ? unservedLine(status, Number.POSITIVE_INFINITY).text : fallback
 }
 
@@ -92,7 +93,7 @@ export function sshTargetConnectFailureText(
 ): string {
   return sshConnectFailureText(
     useAppStore.getState().sshConnectionStates.get(targetId),
-    error instanceof Error ? error.message : fallback
+    extractIpcErrorMessage(error, fallback)
   )
 }
 
@@ -114,14 +115,9 @@ function unavailableLine(reason: string | undefined): SshHostServerStatusLine {
   if (reason === TUNNEL_UNAVAILABLE) {
     return tunnelUnavailableLine()
   }
-  if (reason === 'runtime_noexec') {
-    return {
-      tone: 'destructive',
-      text: translate(
-        'auto.components.settings.sshHostServer.runtimeNoexec',
-        'This host doesn’t allow running programs from ~/.orca-remote, so Orca can’t start its server there. This usually means the home folder is mounted with noexec. Ask the host’s administrator to allow running programs there, then connect again.'
-      )
-    }
+  const fixable = reason ? hostFixableUnavailableText(reason) : null
+  if (fixable) {
+    return { tone: 'destructive', text: fixable }
   }
   const cause = reason ? unavailableCause(reason) : null
   if (cause) {

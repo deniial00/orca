@@ -8,10 +8,8 @@ import type {
 } from '../../shared/agent-session-journal-types'
 import type { NativeChatBlock } from '../../shared/native-chat-types'
 import type { AgentSessionDispatchOutcome } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import {
-  isCodexAppServerRequestError,
-  type CodexAppServerConnection
-} from './codex-app-server-connection'
+import { isCodexAppServerRequestError } from './app-server/codex-app-server-request-error'
+import type { CodexAppServerConnection } from './app-server/codex-app-server-connection-types'
 import { isCodexAppServerUnsupportedError } from './codex-app-server-session'
 import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
 import { readCodexTurnId } from './codex-structured-thread-facts'
@@ -48,6 +46,7 @@ export type CodexTurnHost = {
   threadId: string
   options: Map<string, string>
   appliedTurnOptions?: Readonly<Record<string, string>>
+  appliedSettings?: CodexSession['appliedSettings']
   reportedOptions?: CodexSession['reportedOptions']
   catalogAccess?: CodexSession['catalogAccess']
   dispatchEchoes: CodexDispatchEchoes
@@ -163,6 +162,7 @@ export async function startCodexTurn(
   host.appliedTurnOptions = input.turnOptions ?? Object.fromEntries(host.options)
   const requested = codexTurnRequestOptions(host)
   let answer: unknown
+  const discardSettingsAttempt = host.appliedSettings?.attempt(requested)
   try {
     answer = await host.connection.request(
       'turn/start',
@@ -175,6 +175,9 @@ export async function startCodexTurn(
       { timeoutMs: input.timeoutMs, onReply: input.onReply }
     )
   } catch (error) {
+    if (isCodexAppServerRequestError(error) || isCodexAppServerUnsupportedError(error)) {
+      discardSettingsAttempt?.()
+    }
     if (
       previousOptions &&
       (isCodexAppServerRequestError(error) || isCodexAppServerUnsupportedError(error))

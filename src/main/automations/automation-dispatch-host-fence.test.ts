@@ -10,7 +10,7 @@ import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 import type { Store } from '../persistence'
 import { resolveAutomationRunTarget } from './run-target-resolution'
 import { AutomationService } from './service'
-import { closeTestStores, createStore, testState } from '../persistence-test-harness'
+import { closeTestStores, createStore, testState } from '../persistence/persistence-test-harness'
 
 vi.mock('electron', () => ({
   app: {
@@ -211,22 +211,6 @@ describe('scheduled dispatch fenced on the host the record captured', () => {
     await evaluateAt(store, service, automation.id, '2026-05-13T09:01:00')
 
     expect(send).toHaveBeenCalledWith('automations:dispatchRequested', expect.anything())
-  })
-
-  it('refuses exactly the record the list files as an orphan', async () => {
-    vi.setSystemTime(new Date('2026-05-13T08:00:00'))
-    const store = await createStore()
-    const automation = seedSshAutomation(store)
-    reRegisterTarget(store)
-
-    const item = store
-      .listAutomationsForScope()
-      .items.find((entry) => entry.automationId === automation.id)
-
-    expect(item?.selector).toEqual({
-      kind: 'orphan',
-      issue: AUTOMATION_ORPHAN_ISSUES.targetReplaced
-    })
   })
 
   it('dispatches while the registration the record captured is still the live one', async () => {

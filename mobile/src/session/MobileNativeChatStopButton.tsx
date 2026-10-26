@@ -2,9 +2,9 @@ import { ActivityIndicator, Pressable } from 'react-native'
 import { Square } from 'lucide-react-native'
 import { NATIVE_CHAT_TURN_STATUS_COPY } from '../../../src/shared/native-chat-turn-status'
 import { colors } from '../theme/mobile-theme'
-import { mobileNativeChatComposerStyles as styles } from './mobile-native-chat-composer-styles'
+import { mobileNativeChatComposerStyles as styles } from './native-chat/composer/mobile-native-chat-composer-styles'
 
-/** The composer's Stop, in Send's slot. `held`: this phone's own Stop request is still in flight. */
+// held tracks this phone’s in-flight Stop request, not the host’s stopping status.
 export function MobileNativeChatStopButton({
   onStop,
   held
